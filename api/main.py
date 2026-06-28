@@ -16,10 +16,14 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ai_backend.schemas import RegistrationRequest, RegistrationResponse, InterviewAnswers, ValidationEvaluation
 from ai_backend.skills.scrapers import scrape_github, scrape_linkedin
-from ai_backend.core import agent, _get_neon_conn as get_neon_conn
+from ai_backend.core import agent, _get_neon_conn as get_neon_conn, _release_neon_conn as release_neon_conn
 from ai_backend.reasoners.synapse import execute_synapse
 from ai_backend.reasoners.cortex import execute_cortex
 from ai_backend.reasoners.validator import generate_questions, evaluate_answers
+from ai_backend.skills.proctoring import verify_identity
+
+PROCTORING_STORE = {}
+USER_PROFILE_PICS = {}
 app = agent
 app.title = 'Nexus API Gateway'
 app.description = 'Async router for AgentField framework'
@@ -27,8 +31,12 @@ app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=False,
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 
+_supabase_client = None
 def get_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    global _supabase_client
+    if _supabase_client is None:
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase_client
 
 def _emit_gateway_thought(user_id: str, step_status: str) -> None:
     try:
@@ -37,8 +45,10 @@ def _emit_gateway_thought(user_id: str, step_status: str) -> None:
         cur.execute('INSERT INTO thought_logs (user_id, step, agent, status) VALUES (%s, %s, %s, %s)', (user_id, 'gateway', 'GATEWAY', step_status))
         conn.commit()
         cur.close()
-        conn.close()
+        release_neon_conn(conn)
     except Exception:
+        if 'conn' in locals():
+            release_neon_conn(conn)
         pass
 
 async def process_registration_background(user_id: str, request: RegistrationRequest):
@@ -47,6 +57,9 @@ async def process_registration_background(user_id: str, request: RegistrationReq
         github_raw = scrape_github(request.github_username)
         _emit_gateway_thought(user_id, 'Scraping LinkedIn footprint...')
         linkedin_raw = scrape_linkedin(str(request.linkedin_url))
+        if linkedin_raw.get("profile_pic_url"):
+            USER_PROFILE_PICS[user_id] = linkedin_raw["profile_pic_url"]
+        
         _emit_gateway_thought(user_id, 'Handing off to SYNAPSE for profile sanitization...')
         sanitized_profile = await execute_synapse(user_id=user_id, github_raw=github_raw, linkedin_raw=linkedin_raw, resume_text=request.resume_text)
         _emit_gateway_thought(user_id, 'Handing off to CORTEX for matchmaking...')
@@ -105,7 +118,7 @@ async def stream_thought_log(user_id: str):
                 cur.execute('SELECT step, agent, status FROM thought_logs WHERE user_id = %s ORDER BY id ASC', (user_id,))
                 rows = cur.fetchall()
                 cur.close()
-                conn.close()
+                release_neon_conn(conn)
                 for row in rows[seen:]:
                     event = {'step': row[0], 'agent': row[1], 'status': row[2]}
                     yield f'data: {json.dumps(event)}\n\n'
@@ -113,6 +126,8 @@ async def stream_thought_log(user_id: str):
                     if row[0] == 'complete':
                         return
             except Exception:
+                if 'conn' in locals():
+                    release_neon_conn(conn)
                 pass
             await asyncio.sleep(0.8)
             elapsed += 0.8
@@ -126,12 +141,14 @@ def health_check():
 @app.get('/api/user/{user_id}/status')
 def check_user_status(user_id: str):
     db = get_supabase()
+    profile_pic = USER_PROFILE_PICS.get(user_id, "")
+    
     match = db.table('matches').select('id, status').eq('user_id', user_id).limit(1).execute()
     if match.data:
-        return {'status': match.data[0]['status'], 'match_id': match.data[0]['id']}
+        return {'status': match.data[0]['status'], 'match_id': match.data[0]['id'], 'profile_pic_url': profile_pic}
     user = db.table('users').select('id').eq('id', user_id).limit(1).execute()
     if user.data:
-        return {'status': 'processing'}
+        return {'status': 'processing', 'profile_pic_url': profile_pic}
     return {'status': 'not_found'}
 
 class ScanRequest(BaseModel):
@@ -147,8 +164,10 @@ async def trigger_scan(req: ScanRequest, background_tasks: BackgroundTasks):
         cur.execute('INSERT INTO scan_jobs (id, user_id, progress, status) VALUES (%s, %s, %s, %s)', (job_id, user_id, 0, 'running'))
         conn.commit()
         cur.close()
-        conn.close()
+        release_neon_conn(conn)
     except Exception as e:
+        if 'conn' in locals():
+            release_neon_conn(conn)
         raise HTTPException(status_code=500, detail=f'Failed to create scan job: {e}')
     background_tasks.add_task(_run_scan_job, job_id, user_id)
     return {'job_id': job_id, 'status': 'running'}
@@ -164,8 +183,10 @@ async def _run_scan_job(job_id: str, user_id: str):
             cur.execute('UPDATE scan_jobs SET progress = %s, status = %s, updated_at = NOW() WHERE id = %s', (progress, status_val, job_id))
             conn.commit()
             cur.close()
-            conn.close()
+            release_neon_conn(conn)
         except Exception:
+            if 'conn' in locals():
+                release_neon_conn(conn)
             pass
 
 @app.get('/api/scan/{job_id}')
@@ -176,7 +197,7 @@ def get_scan_status(job_id: str):
         cur.execute('SELECT progress, status, result FROM scan_jobs WHERE id = %s', (job_id,))
         row = cur.fetchone()
         cur.close()
-        conn.close()
+        release_neon_conn(conn)
         if row:
             return {'job_id': job_id, 'progress': row[0], 'status': row[1], 'result': row[2]}
         raise HTTPException(status_code=404, detail='Job not found')
@@ -218,6 +239,43 @@ async def submit_interview(match_id: str, answers: InterviewAnswers):
     else:
         db.table('matches').update({'status': 'rejected'}).eq('id', match_id).execute()
     return evaluation
+
+class ProctoringSetupRequest(BaseModel):
+    base_image_b64: str
+
+@app.post('/api/interview/{match_id}/setup_proctoring')
+async def setup_proctoring(match_id: str, req: ProctoringSetupRequest):
+    db = get_supabase()
+    try:
+        match_data = db.table('matches').select('user_id').eq('id', match_id).execute()
+        if match_data.data:
+            user_id = match_data.data[0]['user_id']
+            linkedin_url = USER_PROFILE_PICS.get(user_id)
+            if linkedin_url:
+                import urllib.request
+                import base64
+                req_obj = urllib.request.Request(linkedin_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req_obj, timeout=5) as response:
+                    b64_img = base64.b64encode(response.read()).decode('utf-8')
+                    PROCTORING_STORE[match_id] = b64_img
+                    return {"status": "success", "message": "Proctoring baseline set from LinkedIn."}
+    except Exception as e:
+        print(f"Failed to fetch LinkedIn picture for baseline: {e}")
+        
+    PROCTORING_STORE[match_id] = req.base_image_b64
+    return {"status": "success", "message": "Proctoring baseline set from webcam fallback."}
+
+class VerifyFaceRequest(BaseModel):
+    current_image_b64: str
+
+@app.post('/api/interview/{match_id}/verify_face')
+async def verify_face(match_id: str, req: VerifyFaceRequest):
+    if match_id not in PROCTORING_STORE:
+        raise HTTPException(status_code=400, detail="Proctoring baseline not found.")
+    
+    base_img = PROCTORING_STORE[match_id]
+    result = verify_identity(base_img, req.current_image_b64)
+    return result
 
 class CandidateStatusUpdate(BaseModel):
     status: str

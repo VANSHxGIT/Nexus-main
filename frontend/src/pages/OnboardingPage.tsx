@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Code, Briefcase, ArrowRight, CheckCircle, AlertCircle, MessageSquare, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ProctoringView } from '../components/ProctoringView';
 
 export const OnboardingPage = () => {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -18,6 +19,8 @@ export const OnboardingPage = () => {
   const [validationScore, setValidationScore] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [thoughtLog, setThoughtLog] = useState<{step: string, agent: string, status: string}[]>([]);
+  const [cameraCovered, setCameraCovered] = useState(false);
+  const [showPicErrorModal, setShowPicErrorModal] = useState(false);
 
   // Poll for match status
   useEffect(() => {
@@ -31,6 +34,11 @@ export const OnboardingPage = () => {
         const res = await fetch(`${API_BASE}/api/user/${userId}/status`);
         const data = await res.json();
         if (data.status === 'pending_validation' && data.match_id) {
+          if (!data.profile_pic_url) {
+            setShowPicErrorModal(true);
+            clearInterval(interval);
+            return;
+          }
           setMatchId(data.match_id);
           clearInterval(interval);
           fetchQuestions(data.match_id);
@@ -246,10 +254,22 @@ export const OnboardingPage = () => {
             </div>
           </motion.div>
         ) : validationScore === null ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-            <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-              <MessageSquare size={18} color="var(--accent-primary)" /> Targeted Validation
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} style={{
+            backgroundColor: cameraCovered ? 'rgba(239, 68, 68, 0.05)' : 'transparent',
+            padding: cameraCovered ? '1.5rem' : '0',
+            borderRadius: 'var(--radius-lg)',
+            border: cameraCovered ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent',
+            transition: 'all 0.3s ease',
+            margin: cameraCovered ? '-1.5rem' : '0'
+          }}>
+            <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: cameraCovered ? 'var(--status-error)' : 'var(--text-primary)' }}>
+              <MessageSquare size={18} color={cameraCovered ? 'var(--status-error)' : 'var(--accent-primary)'} /> Targeted Validation
             </h3>
+            
+            <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
+              <ProctoringView matchId={matchId} onWarningChange={setCameraCovered} />
+            </div>
+
             {questions.length === 0 ? (
               <div style={{ padding: '1rem 0' }}>
                 <div className="skeleton-line" />
@@ -263,18 +283,25 @@ export const OnboardingPage = () => {
                     <p style={{ fontSize: '13px', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>{q}</p>
                     <textarea
                       className="form-input"
-                      style={{ paddingLeft: '1rem', minHeight: '80px', resize: 'vertical' }}
+                      style={{ 
+                        paddingLeft: '1rem', 
+                        minHeight: '80px', 
+                        resize: 'vertical',
+                        backgroundColor: cameraCovered ? '#d1d5db' : undefined,
+                        cursor: cameraCovered ? 'not-allowed' : 'text'
+                      }}
                       value={answers[idx]}
                       onChange={(e) => {
                          const newAns = [...answers];
                          newAns[idx] = e.target.value;
                          setAnswers(newAns);
                       }}
-                      placeholder="Your response..."
+                      placeholder={cameraCovered ? "Camera covered. Action disabled." : "Your response..."}
+                      disabled={cameraCovered}
                     />
                   </div>
                 ))}
-                <button onClick={handleAnswerSubmit} className="nexus-button" disabled={isLoading} style={{ width: '100%' }}>
+                <button onClick={handleAnswerSubmit} className="nexus-button" disabled={isLoading || cameraCovered} style={{ width: '100%' }}>
                   {isLoading ? (
                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}>
                        <div className="skeleton" style={{width: '16px', height: '16px', borderRadius: '50%'}} /> 
@@ -306,6 +333,30 @@ export const OnboardingPage = () => {
           </motion.div>
         )}
       </motion.div>
+
+      {showPicErrorModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div className="surface-card" style={{ maxWidth: '400px', width: '90%', textAlign: 'center', padding: '2.5rem' }}>
+            <AlertCircle size={48} color="var(--status-error)" style={{ margin: '0 auto 1.5rem' }} />
+            <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.75rem', fontSize: '1.25rem' }}>Profile Picture Required</h3>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.75rem', fontSize: '14px', lineHeight: '1.5' }}>
+              We could not validate your identity. Please ensure your LinkedIn profile has a public profile picture, then apply again.
+            </p>
+            <button 
+              className="nexus-button" 
+              style={{ width: '100%' }}
+              onClick={() => { setShowPicErrorModal(false); navigate('/'); }}
+            >
+              Return to Home
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

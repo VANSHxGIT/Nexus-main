@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 GITHUB_MOCK_PROFILE: Dict[str, Any] = {'top_languages': {'Python': 45.0, 'TypeScript': 30.0, 'Go': 15.0, 'Rust': 10.0}, 'total_commits_last_year': 247, 'repos_analyzed': 8, 'top_repos': ['distributed-cache', 'ml-pipeline', 'api-gateway'], 'raw_bio': 'Fallback profile: experienced full-stack engineer'}
-LINKEDIN_MOCK_PROFILE: Dict[str, Any] = {'recent_titles': ['Senior Software Engineer', 'Tech Lead'], 'years_of_experience': 5.2, 'industry_keywords': ['Distributed Systems', 'Machine Learning', 'Cloud Architecture'], 'raw_summary': 'Fallback profile: seasoned technical leader with cross-functional expertise.'}
+LINKEDIN_MOCK_PROFILE: Dict[str, Any] = {'recent_titles': ['Senior Software Engineer', 'Tech Lead'], 'years_of_experience': 5.2, 'industry_keywords': ['Distributed Systems', 'Machine Learning', 'Cloud Architecture'], 'raw_summary': 'Fallback profile: seasoned technical leader with cross-functional expertise.', 'profile_pic_url': 'https://i.pravatar.cc/300'}
 
 def scrape_github(username: str) -> Dict[str, Any]:
     print(f'[Skill] Scraping live GitHub footprint for {username}...')
@@ -44,7 +44,11 @@ def scrape_linkedin(url: str) -> Dict[str, Any]:
         username = url.rstrip('/').split('/')[-1] if '/' in url else 'professional'
         if not username or username == 'in':
             raise ValueError('Invalid LinkedIn URL structure')
-        return {'recent_titles': ['Software Engineer', f'Lead Developer at {username.capitalize()} Corp'], 'years_of_experience': round(random.uniform(3.0, 8.0), 1), 'industry_keywords': ['Scalable Architecture', 'System Design', 'Agile Leadership'], 'raw_summary': 'Active contributor and technical leader.'}
+        
+        # Simulate profile pic extraction. If 'nophoto' is in the URL, return empty.
+        profile_pic_url = "" if "nophoto" in url.lower() else f"https://i.pravatar.cc/300?u={username}"
+
+        return {'recent_titles': ['Software Engineer', f'Lead Developer at {username.capitalize()} Corp'], 'years_of_experience': round(random.uniform(3.0, 8.0), 1), 'industry_keywords': ['Scalable Architecture', 'System Design', 'Agile Leadership'], 'raw_summary': 'Active contributor and technical leader.', 'profile_pic_url': profile_pic_url}
     except Exception as e:
         print(f'[Skill] LinkedIn fail-soft triggered ({type(e).__name__}): {e}')
         return LINKEDIN_MOCK_PROFILE.copy()

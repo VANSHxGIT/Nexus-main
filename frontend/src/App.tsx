@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard';
 import { AnalysisHistory } from './pages/AnalysisHistory';
 import { Settings } from './pages/Settings';
 import { HRDashboard } from './pages/HRDashboard';
+import { AssessmentPage } from './pages/AssessmentPage';
 
 const pageTransition = {
   initial: { opacity: 0, y: 10, filter: 'blur(4px)' },
@@ -47,6 +48,7 @@ function App() {
             <Route path="/privacy" element={<PageWrapper><PrivacyPolicy /></PageWrapper>} />
             <Route path="/terms" element={<PageWrapper><Terms /></PageWrapper>} />
             <Route path="/hr-dashboard" element={<PageWrapper><HRDashboard /></PageWrapper>} />
+            <Route path="/assessment/:matchId" element={<PageWrapper><AssessmentPage /></PageWrapper>} />
           </Routes>
         </AnimatePresence>
       </main>
