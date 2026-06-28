@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  agentfield-control-plane:
+    image: agentfield/control-plane:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - ENVIRONMENT=local
+    volumes:
+      - ./ai_backend:/app/ai_backend
+
+  fastapi-gateway:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app/api
+      - ./ai_backend:/app/ai_backend
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - NEON_DSN=${NEON_DSN}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - fastapi-gateway
