@@ -30,16 +30,18 @@ export const ProctoringView: React.FC<ProctoringViewProps> = ({ matchId, onWarni
 
   return (
     <div className={`flex flex-col gap-4 relative max-w-sm w-full bg-slate-900 rounded-xl overflow-hidden shadow-2xl border-2 ${
-      isProctoring 
-        ? (warningMessage ? 'border-red-500 shadow-red-500/20' : 'border-emerald-500 shadow-emerald-500/20') 
-        : 'border-slate-700'
+      warningMessage 
+        ? 'border-red-500 shadow-red-500/20' 
+        : (isProctoring ? 'border-emerald-500 shadow-emerald-500/20' : 'border-slate-700')
     }`}>
       
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 border-b border-slate-700 ${warningMessage ? 'bg-red-950/40' : 'bg-slate-800'}`}>
         <div className="flex items-center gap-2">
-          {isProctoring ? (
-            <ShieldAlert className={`w-4 h-4 ${warningMessage ? 'text-red-500' : 'text-emerald-400'}`} />
+          {warningMessage ? (
+            <ShieldAlert className="w-4 h-4 text-red-500" />
+          ) : isProctoring ? (
+            <ShieldAlert className="w-4 h-4 text-emerald-400" />
           ) : (
             <Camera className="w-4 h-4 text-slate-400" />
           )}

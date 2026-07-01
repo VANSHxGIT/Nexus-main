@@ -93,6 +93,38 @@ export function useProctoring(matchId: string | null) {
     return () => clearInterval(intervalId);
   }, [isProctoring, matchId, status, captureFrame]);
 
+  // Local brightness check for covered camera
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || video.readyState !== 4) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        sum += (data[i] + data[i+1] + data[i+2]) / 3;
+      }
+      const avgBrightness = sum / (data.length / 4);
+      
+      if (avgBrightness < 15) {
+        setWarningMessage("Camera is covered");
+      } else {
+        setWarningMessage((prev) => prev === "Camera is covered" ? null : prev);
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   return {
     videoRef,
     startCamera,
