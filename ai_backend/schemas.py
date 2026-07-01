@@ -35,10 +35,10 @@ class CortexMatchEvaluation(BaseModel):
     justification: str = Field(..., description='Two-sentence textual justification for the score')
 
 class InterviewQuestions(BaseModel):
-    questions: List[str] = Field(..., min_length=3, max_length=3, description='Exactly 3 tailored technical questions')
+    questions: List[str] = Field(..., min_length=3, description='Exactly 3 tailored technical questions, plus any custom HR questions')
 
 class InterviewAnswers(BaseModel):
-    answers: List[str] = Field(..., min_length=3, max_length=3, description='Exactly 3 answers corresponding to the questions')
+    answers: List[str] = Field(..., min_length=3, description='Answers corresponding to the questions')
 
 class ValidationEvaluation(BaseModel):
     validation_score: float = Field(..., ge=0.0, le=1.0, description='Evaluation score of the answers')

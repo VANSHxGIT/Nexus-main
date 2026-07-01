@@ -24,6 +24,7 @@ from ai_backend.skills.proctoring import verify_identity
 
 PROCTORING_STORE = {}
 USER_PROFILE_PICS = {}
+CUSTOM_QUESTIONS_STORE = {}
 app = agent
 app.title = 'Nexus API Gateway'
 app.description = 'Async router for AgentField framework'
@@ -221,7 +222,9 @@ async def generate_interview(match_id: str):
     else:
         skills = []
         top_repos = []
-    questions = await generate_questions(match_id=match_id, profile_skills=skills, top_repos=top_repos)
+    
+    custom_qs = CUSTOM_QUESTIONS_STORE.get(user_id, [])
+    questions = await generate_questions(match_id=match_id, profile_skills=skills, top_repos=top_repos, custom_questions=custom_qs)
     return questions
 
 @app.post('/api/interview/{match_id}/submit', response_model=ValidationEvaluation)
@@ -338,3 +341,13 @@ def update_candidate_status(user_id: str, payload: CandidateStatusUpdate):
         raise HTTPException(status_code=404, detail='Match not found')
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class CustomQuestionsRequest(BaseModel):
+    questions: list[str]
+
+@app.post('/api/candidates/{user_id}/custom_questions')
+def add_custom_questions(user_id: str, payload: CustomQuestionsRequest):
+    current = CUSTOM_QUESTIONS_STORE.get(user_id, [])
+    current.extend(payload.questions)
+    CUSTOM_QUESTIONS_STORE[user_id] = current
+    return {'status': 'success', 'custom_questions': current}

@@ -9,11 +9,15 @@ SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @agent.reasoner(name='validator_generate_questions')
-async def generate_questions(match_id: str, profile_skills: list, top_repos: list=None) -> InterviewQuestions:
+async def generate_questions(match_id: str, profile_skills: list, top_repos: list=None, custom_questions: list=None) -> InterviewQuestions:
     emit_thought('VALIDATOR', match_id, 'Synthesizing tailored technical questions...')
     system_prompt = "You are VALIDATOR, an expert human technical interviewer. Based on the candidate's core skills and top GitHub repositories, generate exactly 3 highly targeted, conversational, and practical interview questions. The questions MUST NOT ask the candidate to write code. They should be conceptual, architectural, or situational."
     user_prompt = f'Candidate Skills: {profile_skills}\nTop Repos: {top_repos}'
     iq = await agent.ai(system=system_prompt, user=user_prompt, schema=InterviewQuestions)
+    
+    if custom_questions:
+        iq.questions.extend(custom_questions)
+        
     try:
         db.table('validations').insert({'match_id': match_id, 'questions': iq.questions, 'status': 'pending_answers'}).execute()
         emit_thought('VALIDATOR', match_id, 'Generated questions stored successfully.')

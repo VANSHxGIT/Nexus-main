@@ -31,6 +31,9 @@ export const HRDashboard = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof Candidate; direction: 'asc' | 'desc' } | null>(null);
   const [selectedQa, setSelectedQa] = useState<{questions: string[], answers: string[]} | null>(null);
   const [isQaModalOpen, setIsQaModalOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [newQuestion, setNewQuestion] = useState('');
+  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
   const [qaLoading, setQaLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -53,6 +56,7 @@ export const HRDashboard = () => {
 
   const handleViewQa = async (userId: string) => {
     setIsQaModalOpen(true);
+    setSelectedUserId(userId);
     setQaLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/candidates/${userId}/qa`);
@@ -64,6 +68,29 @@ export const HRDashboard = () => {
       console.error("Failed to fetch QA:", error);
     } finally {
       setQaLoading(false);
+    }
+  };
+
+  const handleAddCustomQuestion = async () => {
+    if (!newQuestion.trim() || !selectedUserId) return;
+    setIsAddingQuestion(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/candidates/${selectedUserId}/custom_questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions: [newQuestion.trim()] })
+      });
+      if (res.ok) {
+        setNewQuestion('');
+        alert("Custom question added successfully! It will be asked during the candidate's interview.");
+      } else {
+        alert('Failed to add custom question.');
+      }
+    } catch (error) {
+      console.error("Failed to add custom question:", error);
+      alert('Error adding custom question.');
+    } finally {
+      setIsAddingQuestion(false);
     }
   };
 
@@ -432,7 +459,7 @@ export const HRDashboard = () => {
             <div className="p-4 border-b border-border-low-contrast flex justify-between items-center bg-surface-subtle">
               <h3 className="font-headline-sm text-text-primary">Candidate Q&A</h3>
               <button 
-                onClick={() => { setIsQaModalOpen(false); setSelectedQa(null); }}
+                onClick={() => { setIsQaModalOpen(false); setSelectedQa(null); setSelectedUserId(null); setNewQuestion(''); }}
                 className="text-text-tertiary hover:text-text-primary transition-colors p-1"
               >
                 <X size={20} />
@@ -459,6 +486,39 @@ export const HRDashboard = () => {
                   No Q&A data available for this candidate.
                 </div>
               )}
+            </div>
+            
+            {/* Add Custom Question Section */}
+            <div className="p-6 border-t border-border-low-contrast bg-surface-subtle flex flex-col gap-3">
+              <h4 className="font-headline-sm text-text-primary text-sm">Add Custom Question</h4>
+              <p className="text-xs text-text-tertiary mb-1">
+                Add a specific question you want the AI to ask this candidate during their interview.
+              </p>
+              <div className="flex gap-3">
+                <input 
+                  type="text" 
+                  placeholder="e.g. Can you explain your experience with WebSockets?" 
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  className="flex-1 bg-surface-base border border-border-low-contrast rounded-lg px-4 py-2 text-sm text-text-primary outline-none focus:border-primary transition-colors placeholder:text-text-tertiary"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAddCustomQuestion();
+                    }
+                  }}
+                />
+                <button 
+                  onClick={handleAddCustomQuestion}
+                  disabled={!newQuestion.trim() || isAddingQuestion}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors whitespace-nowrap ${
+                    !newQuestion.trim() || isAddingQuestion
+                    ? 'bg-surface-base text-text-tertiary cursor-not-allowed border border-border-low-contrast' 
+                    : 'bg-primary text-white hover:bg-primary/90 border border-primary'
+                  }`}
+                >
+                  {isAddingQuestion ? 'Adding...' : 'Add Question'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
