@@ -1,11 +1,12 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Code, Briefcase, ArrowRight, CheckCircle, AlertCircle, MessageSquare, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProctoringView } from '../components/ProctoringView';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export const OnboardingPage = () => {
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const navigate = useNavigate();
   const [githubUrl, setGithubUrl] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
@@ -21,6 +22,16 @@ export const OnboardingPage = () => {
   const [thoughtLog, setThoughtLog] = useState<{step: string, agent: string, status: string}[]>([]);
   const [cameraCovered, setCameraCovered] = useState(false);
   const [showPicErrorModal, setShowPicErrorModal] = useState(false);
+
+  const fetchQuestions = useCallback(async (mId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/interview/${mId}/generate`, { method: 'POST' });
+      const data = await res.json();
+      setQuestions(data.questions);
+    } catch {
+      setError("Failed to generate interview questions.");
+    }
+  }, []);
 
   // Poll for match status
   useEffect(() => {
@@ -43,13 +54,15 @@ export const OnboardingPage = () => {
           clearInterval(interval);
           fetchQuestions(data.match_id);
         }
-      } catch (e) {} finally {
+      } catch {
+        // Ignore errors during polling
+      } finally {
         isFetching = false;
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [userId, matchId]);
+  }, [userId, matchId, fetchQuestions]);
 
   
   useEffect(() => {
@@ -70,16 +83,6 @@ export const OnboardingPage = () => {
     es.onerror = () => es.close();
     return () => es.close();
   }, [userId, matchId]);
-
-  const fetchQuestions = async (mId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/interview/${mId}/generate`, { method: 'POST' });
-      const data = await res.json();
-      setQuestions(data.questions);
-    } catch (err: any) {
-      setError("Failed to generate interview questions.");
-    }
-  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -148,7 +151,7 @@ export const OnboardingPage = () => {
         navigate('/dashboard');
       }, 3000);
 
-    } catch (e) {
+    } catch {
       setError("Failed to submit answers.");
     } finally {
       setIsLoading(false);
